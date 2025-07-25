@@ -1,0 +1,20 @@
+# Backend dependencies
+fastapi
+uvicorn
+requests
+python-multipart
+
+# Document handling
+python-docx
+
+# Embedding
+InstructorEmbedding
+sentence-transformers
+torch
+tqdm
+
+# Vector DB
+qdrant-client
+
+# Optional - if calling LLM APIs
+openai
