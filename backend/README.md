@@ -10,7 +10,7 @@ Trích xuất kiến thức từ file `.docx`, lưu vào Qdrant, và trả lời
 - Docker Desktop (Windows/macOS)
 - Đã cài [Ollama](https://ollama.com/) và pull model:
   ```bash
-  ollama run nous-hermes2
+  ollama run nous-hermes2-mixtral:8x7b-dpo-q4_K_M
 
   ```
 
@@ -21,7 +21,7 @@ Trích xuất kiến thức từ file `.docx`, lưu vào Qdrant, và trả lời
 ### 1. Chạy Ollama trên host
 
 ```bash
-ollama run nous-hermes2
+ollama run nous-hermes2-mixtral:8x7b-dpo-q4_K_M
 
 ```
 

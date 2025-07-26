@@ -1,4 +1,4 @@
-from fastapi import FastAPI, UploadFile, File
+from fastapi import FastAPI, UploadFile, File, Form
 from fastapi.middleware.cors import CORSMiddleware
 from typing import List
 from io import BytesIO
@@ -19,18 +19,24 @@ app.add_middleware(
 )
 
 @app.post("/upload")
-async def upload(files: List[UploadFile] = File(...)):
+async def upload(
+    tags: List[str] = Form(...),  # 🏷️ Cho phép nhiều tag
+    files: List[UploadFile] = File(...)
+):
     for file in files:
         contents = await file.read()
         doc = Document(BytesIO(contents))
-        full_text = [para.text for para in doc.paragraphs]
-        text = "\n".join(full_text)
+        text = "\n".join(para.text for para in doc.paragraphs)
         chunks = chunk_text(text)
-        store_chunks(chunks)
+        # Gán metadata chứa danh sách tag
+        store_chunks(chunks, metadata={"tags": tags})
     return {"status": "ok"}
 
 @app.post("/ask")
-async def ask(question: str = File(...)):
-    context = search_context(question)
+async def ask(
+    question: str = Form(...),
+    filter_tag: str = Form(None)
+):
+    context = search_context(question, filter_tag=filter_tag)
     answer = ask_llm(question, context)
     return {"answer": answer}

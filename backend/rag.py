@@ -19,15 +19,25 @@ def chunk_text(text, max_words=100):
     words = text.split()
     return [" ".join(words[i:i+max_words]) for i in range(0, len(words), max_words)]
 
-def store_chunks(chunks):
+def store_chunks(chunks, metadata=None):
     embeddings = embed_chunks(chunks)
     points = [
-        PointStruct(id=uuid.uuid4().hex, vector=vec, payload={"text": chunk})
+        PointStruct(id=uuid.uuid4().hex, vector=vec, payload={**(metadata or {}), "text": chunk})
         for vec, chunk in zip(embeddings, chunks)
     ]
     qdrant.upload_points(collection_name=COLLECTION_NAME, points=points)
 
-def search_context(query, top_k=3):
+
+def search_context(query, filter_tag=None, top_k=3):
     query_vec = model.encode([["Represent the question:", query]])[0]
-    hits = qdrant.search(collection_name=COLLECTION_NAME, query_vector=query_vec, limit=top_k)
+    if filter_tag:
+        hits = qdrant.search(
+            collection_name=COLLECTION_NAME,
+            query_vector=query_vec,
+            limit=top_k,
+            query_filter={"must": [{"key": "tags", "match": {"value": filter_tag}}]}
+        )
+    else:
+        hits = qdrant.search(collection_name=COLLECTION_NAME, query_vector=query_vec, limit=top_k)
     return "\n".join(h.payload["text"] for h in hits)
+
