@@ -92,3 +92,11 @@ rag-docx-full/
 ---
 
 Chúc bạn dùng vui 🎉 Nếu cần mở rộng để hỗ trợ `.pdf`, `.xlsx` hoặc multi-model (OpenAI, Claude...), cứ nhắn!
+
+
+
+
+/mnt/f/Code/Rag/rag-docx-react-app/backend
+chmod +x run_qdrant.sh run_backend.sh
+./run_qdrant.sh      # tab 1
+./run_backend.sh     # tab 2
