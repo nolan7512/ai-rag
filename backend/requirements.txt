@@ -12,7 +12,7 @@ InstructorEmbedding
 sentence-transformers
 torch
 tqdm
-
+nltk
 # Vector DB
 qdrant-client
 
