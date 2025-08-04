@@ -2,8 +2,6 @@ from InstructorEmbedding import INSTRUCTOR
 from qdrant_client import QdrantClient
 from qdrant_client.models import Distance, VectorParams, PointStruct, Filter, FieldCondition, MatchValue, PointIdsList
 import uuid, os
-import nltk
-from nltk.tokenize import sent_tokenize
 import requests
 from qdrant_client.http.exceptions import UnexpectedResponse
 from model import judge_question_relevance
@@ -12,24 +10,32 @@ from docx import Document
 from io import BytesIO
 from fastapi import UploadFile
 from typing import List
-nltk.download("punkt")
+
+# Chay tren docker thi bo # ra
+import nltk
+# nltk.download("punkt")
+from nltk.tokenize import sent_tokenize
+nltk.download("punkt_tab")
 
 # 1. Load model base
 model = INSTRUCTOR("hkunlp/instructor-base")  # đã thay đổi từ large → base
-
+QDRANT_HOST = os.getenv("QDRANT_HOST", "localhost")  # lấy từ biến môi trường hoặc mặc định là localhost
 # 2. Kết nối Qdrant
-qdrant = QdrantClient(host="qdrant", port=6333, timeout=120.0)
+# qdrant = QdrantClient(host="qdrant", port=6333, timeout=120.0)
+qdrant = QdrantClient(host=QDRANT_HOST, port=6333, timeout=120.0)
 
 # 3. Khai báo collection và embed_dim phù hợp với instructor-base
-COLLECTION_NAME = "kb"
+COLLECTION_NAME = os.getenv("COLLECTION_NAME", "kb")  # lấy từ biến môi trường hoặc mặc định là "kb"
 EMBED_DIM = 768  # instructor-base đầu ra là 768 dimensions
 
-qdrant.recreate_collection(
-    collection_name=COLLECTION_NAME,
-    vectors_config=VectorParams(size=EMBED_DIM, distance=Distance.COSINE)
-)
+# Chỉ tạo collection nếu chưa tồn tại
+if not qdrant.collection_exists(collection_name=COLLECTION_NAME):
+    qdrant.create_collection(
+        collection_name=COLLECTION_NAME,
+        vectors_config=VectorParams(size=EMBED_DIM, distance=Distance.COSINE)
+    )
 
-def should_use_rag(question: str, low_threshold=0.25, high_threshold=0.65) -> bool:
+def should_use_rag(question: str, low_threshold=0.15, high_threshold=0.4) -> bool:
     """
     Đánh giá nên dùng RAG hay không dựa trên embedding similarity và fallback LLM nếu cần.
     """
@@ -38,7 +44,7 @@ def should_use_rag(question: str, low_threshold=0.25, high_threshold=0.65) -> bo
     hits = qdrant.search(
         collection_name=COLLECTION_NAME,
         query_vector=question_vec,
-        limit=3
+        limit=10
     )
 
     if not hits:
@@ -46,7 +52,7 @@ def should_use_rag(question: str, low_threshold=0.25, high_threshold=0.65) -> bo
 
     top_score = hits[0].score
     context = "\n".join([hit.payload["text"] for hit in hits])
-
+    print("Top score:", top_score)
     if top_score >= high_threshold:
         return True
     if top_score < low_threshold:
@@ -60,7 +66,7 @@ def embed_chunks(chunks):
      # chọn prompt phù hợp loại tài liệu
     return model.encode([["Represent the internal document for retrieval:", ch] for ch in chunks])
 
-def chunk_by_sentences(text, max_words=200):
+def chunk_by_sentences(text, max_words=300):
     sentences = sent_tokenize(text)
     chunks, current = [], []
 

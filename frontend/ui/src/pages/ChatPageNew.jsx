@@ -180,7 +180,7 @@ export default function ChatPage() {
                 >
                   <Message.CustomContent>
                     {m.isStreaming ? (
-                      <pre className="whitespace-pre-wrap text-sm text-gray-800 ">
+                      <pre className="rounded-md bg-gray-100 p-2 whitespace-pre-wrap break-words">
                         {/* {normalizeMarkdown(m.message)} */}
                         {m.message}
                       </pre>
@@ -217,7 +217,7 @@ export default function ChatPage() {
                             const content = extractTextFromReactNode(children);
                             return (
                               <div className="relative group">
-                                <pre className="rounded-md bg-gray-100 p-2 overflow-auto">
+                                <pre className="rounded-md bg-gray-100 p-2 whitespace-pre-wrap break-words">
                                   <code className={className} {...props}>
                                     {children}
                                   </code>

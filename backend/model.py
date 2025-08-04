@@ -1,22 +1,29 @@
+import os
 import requests
+from dotenv import load_dotenv
+
+load_dotenv()  # Tải các biến môi trường từ file .env
+
+LLM_API_URL = os.getenv("LLM_API_URL", "http://host.docker.internal:11434/api/generate")
+LLM_MODEL_NAME = os.getenv("LLM_MODEL_NAME", "nous-hermes2")
 
 def stream_llm(question, context="Không có ngữ cảnh."):
-    if not context or context == "":
+    if not context.strip():
         prompt = question
     else:
         prompt = f"""
-    Bạn là trợ lý thông minh. Chỉ sử dụng thông tin trong văn bản sau để trả lời câu hỏi, tránh thêm từ vào văn bản. 
-    Nếu không tìm thấy thông tin phù hợp, hãy trả lời: "Tôi không tìm thấy thông tin trong các data nội bộ. Vậy đây là câu hỏi bên ngoài ?"
+Bạn là trợ lý thông minh. Chỉ sử dụng thông tin trong văn bản sau để trả lời câu hỏi. 
+Nếu không tìm thấy thông tin phù hợp, hãy trả lời: "Tôi không tìm thấy thông tin trong database của mình."
 
-    Văn bản:
-    \"\"\"{context}\"\"\"
+Văn bản:
+\"\"\"{context}\"\"\"
 
-    Câu hỏi: {question}
-    Trả lời:
-    """
+Câu hỏi: {question}
+Trả lời:
+"""
     response = requests.post(
-        "http://host.docker.internal:11434/api/generate",
-        json={"model": "nous-hermes2", "prompt": prompt, "stream": True},
+        LLM_API_URL,
+        json={"model": LLM_MODEL_NAME, "prompt": prompt, "stream": True},
         stream=True,
     )
 
@@ -32,14 +39,7 @@ def stream_llm(question, context="Không có ngữ cảnh."):
             except Exception:
                 continue
 
-def judge_question_relevance(question: str, context: str, model_name="nous-hermes2") -> bool:
-    """
-    Gửi prompt đến LLM để đánh giá mức độ liên quan giữa câu hỏi và context.
-
-    Trả về:
-    - True: nếu LLM trả lời 'yes'
-    - False: nếu trả lời 'no' hoặc gặp lỗi
-    """
+def judge_question_relevance(question: str, context: str) -> bool:
     prompt = f"""
 Bạn là hệ thống đánh giá truy xuất ngữ cảnh.
 
@@ -58,13 +58,14 @@ Chỉ trả lời duy nhất một từ:
 
     try:
         response = requests.post(
-            "http://host.docker.internal:11434/api/generate",
-            json={"model": model_name, "prompt": prompt, "stream": False},
-            timeout=60,
+            LLM_API_URL,
+            json={"model": LLM_MODEL_NAME, "prompt": prompt, "stream": False},
+            timeout=300.0,
         )
         answer = response.json().get("response", "").strip().lower()
         return "yes" in answer
     except Exception as e:
         print("judge_question_relevance failed:", e)
         return False
+
 

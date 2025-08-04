@@ -45,11 +45,12 @@ async def ask(request: Request):
 
     try:
         if should_use_rag(question):
-            context = search_context(question)
             print("✅ Dùng RAG (có context)")
+            context = search_context(question)
         else:
-            context = ""
             print("❌ Không dùng RAG (fallback knowledge model)")
+            context = ""
+
 
         if stream_mode:
             def stream():
