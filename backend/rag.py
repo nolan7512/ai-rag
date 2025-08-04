@@ -35,7 +35,7 @@ if not qdrant.collection_exists(collection_name=COLLECTION_NAME):
         vectors_config=VectorParams(size=EMBED_DIM, distance=Distance.COSINE)
     )
 
-def should_use_rag(question: str, low_threshold=0.15, high_threshold=0.4) -> bool:
+def should_use_rag(question: str, low_threshold=0.35, high_threshold=0.65) -> bool:
     """
     Đánh giá nên dùng RAG hay không dựa trên embedding similarity và fallback LLM nếu cần.
     """
@@ -66,7 +66,7 @@ def embed_chunks(chunks):
      # chọn prompt phù hợp loại tài liệu
     return model.encode([["Represent the internal document for retrieval:", ch] for ch in chunks])
 
-def chunk_by_sentences(text, max_words=300):
+def chunk_by_sentences(text, max_words=150):
     sentences = sent_tokenize(text)
     chunks, current = [], []
 
@@ -122,7 +122,7 @@ def store_chunks(chunks, metadata=None):
 #     ]
 #     qdrant.upload_points(collection_name=COLLECTION_NAME, points=points)
 
-def search_context(query, filter_tag=None, top_k=10, score_threshold=0.4):
+def search_context(query, filter_tag=None, top_k=10, score_threshold=0.55):
     query_vec = model.encode([["Represent the question:", query]])[0]
 
     filter_query = {"must": [{"key": "tags", "match": {"value": filter_tag}}]} if filter_tag else None

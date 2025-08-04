@@ -14,6 +14,7 @@ import {
   MessageSeparator,
   Avatar,
 } from "@chatscope/chat-ui-kit-react";
+const VITE_SERVER_API = import.meta.env.VITE_SERVER_API || "http://localhost:8000";
 
 function normalizeMarkdown(text = "") {
   try {
@@ -97,7 +98,7 @@ export default function ChatPage() {
       form.append("stream", useStream.toString());
 
       abortControllerRef.current = new AbortController();
-      const res = await fetch("http://localhost:8000/ask", {
+      const res = await fetch(`${VITE_SERVER_API}/ask`, {
         method: "POST",
         body: form,
         signal: abortControllerRef.current.signal,
@@ -159,16 +160,16 @@ export default function ChatPage() {
   };
 
   return (
-    <div className="flex flex-col h-screen bg-gray-50">
+    <div className="flex flex-col h-[80vh] md:h-lvh bg-gray-50">
       <header className="p-4 border-b bg-white shadow">
         <h1 className="text-lg font-semibold text-gray-800">💬 Trợ lý doanh nghiệp</h1>
       </header>
 
       <div className="flex-1 flex flex-col overflow-hidden">
-        <MainContainer className="flex-1 overflow-hidden">
+        <MainContainer>
           <ChatContainer>
             <MessageList
-              typingIndicator={isTyping ? <TypingIndicator content="Đang xử lý..." /> : null}
+              typingIndicator={isTyping ? <TypingIndicator className="ml-2" content="Đang xử lý..." /> : null}
               ref={messageListRef}
               className="overflow-y-auto"
             >
