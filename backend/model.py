@@ -11,16 +11,27 @@ def stream_llm(question, context="Không có ngữ cảnh."):
     if not context.strip():
         prompt = question
     else:
-        prompt = f"""
-Bạn là trợ lý thông minh. Chỉ sử dụng thông tin trong văn bản sau để trả lời câu hỏi. 
-Nếu không tìm thấy thông tin phù hợp, hãy trả lời: "Tôi không tìm thấy thông tin trong database của mình."
+         prompt = f"""
+            Bạn là trợ lý AI thông minh, chuyên trả lời câu hỏi dựa trên dữ liệu nội bộ đã được trích xuất thành các đoạn văn bản (chunk).
 
-Văn bản:
-\"\"\"{context}\"\"\"
+            Dưới đây là các đoạn văn bản có thể liên quan đến câu hỏi, được lấy từ tìm kiếm Qdrant. 
+            Một số đoạn có thể trùng lặp ở phần đầu/cuối để giữ ngữ cảnh.
 
-Câu hỏi: {question}
-Trả lời:
-"""
+            📌 **Nguyên tắc trả lời:**
+            1. Chỉ sử dụng thông tin có trong các đoạn văn bản bên dưới.
+            2. Bỏ qua các thông tin dư thừa, không liên quan hoặc trùng lặp.
+            3. Nếu nhiều đoạn liên quan, hãy tổng hợp chúng thành câu trả lời mạch lạc, đầy đủ nhưng súc tích.
+            4. Tuyệt đối không thêm hoặc suy đoán thông tin không có trong dữ liệu.
+            5. Nếu không tìm thấy câu trả lời, trả về: **"Tôi không tìm thấy thông tin trong dữ liệu nội bộ."**
+
+            ---
+            Văn bản:
+            \"\"\"{context}\"\"\"
+
+            Câu hỏi: {question}
+
+            Trả lời:
+            """
     response = requests.post(
         LLM_API_URL,
         json={"model": LLM_MODEL_NAME, "prompt": prompt, "stream": True},
@@ -43,7 +54,7 @@ def judge_question_relevance(question: str, context: str) -> bool:
     prompt = f"""
 Bạn là hệ thống đánh giá truy xuất ngữ cảnh.
 
-Dưới đây là đoạn thông tin nội bộ:
+ Dưới đây là các đoạn văn bản có thể liên quan đến câu hỏi, được lấy từ tìm kiếm Qdrant:
 \"\"\"{context}\"\"\" 
 
 Và câu hỏi:

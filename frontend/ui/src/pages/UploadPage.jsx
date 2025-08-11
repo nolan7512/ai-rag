@@ -137,7 +137,14 @@ export default function UploadPage() {
                         alert("Import thành công!");
                     }} className="bg-blue-600 text-white px-4 py-2 rounded">📥 Nhập DB</button>
 
-                    <a href="http://localhost:8000/export_db" target="_blank" className="bg-blue-600 text-white px-4 py-2 rounded">📤 Xuất DB</a>
+                    <a
+                        href="http://localhost:8000/export_db"
+                        download="qdrant_export.json"
+                        className="bg-blue-600 text-white px-4 py-2 rounded"
+                    >
+                        📤 Xuất DB
+                    </a>
+
                 </div>
 
             </div>

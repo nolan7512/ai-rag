@@ -1,6 +1,6 @@
 from fastapi import FastAPI, UploadFile, File, Form, Request
 import json
-from fastapi.responses import StreamingResponse, JSONResponse
+from fastapi.responses import StreamingResponse, JSONResponse, FileResponse
 from fastapi.middleware.cors import CORSMiddleware
 from typing import List
 from io import BytesIO
@@ -20,7 +20,7 @@ from rag import (
 )
 from model import stream_llm
 from qdrant_client.http.exceptions import UnexpectedResponse
-
+import json
 
 app = FastAPI()
 
@@ -197,7 +197,11 @@ def clear_db():
 
 @app.get("/export_db")
 def export_db():
-    return export_collection()
+    data = export_collection()
+    path = "qdrant_export.json"
+    with open(path, "w", encoding="utf-8") as f:
+        json.dump(data, f, ensure_ascii=False, indent=2)
+    return FileResponse(path, media_type="application/json", filename="qdrant_export.json")
 
 @app.post("/import_db")
 async def import_db(file: UploadFile):

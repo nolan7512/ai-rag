@@ -10,7 +10,7 @@ from docx import Document
 from io import BytesIO
 from fastapi import UploadFile
 from typing import List
-
+import re
 # Chay tren docker thi bo # ra
 import nltk
 # nltk.download("punkt")
@@ -66,7 +66,7 @@ def embed_chunks(chunks):
      # chọn prompt phù hợp loại tài liệu
     return model.encode([["Represent the internal document for retrieval:", ch] for ch in chunks])
 
-def chunk_by_sentences(text, max_words=150):
+def chunk_by_sentences(text, max_words=200):
     sentences = sent_tokenize(text)
     chunks, current = [], []
 
@@ -79,7 +79,27 @@ def chunk_by_sentences(text, max_words=150):
         chunks.append(" ".join(current))
     return chunks
 
-def store_chunks(chunks, metadata=None):
+def smart_chunk_text(text: str, max_words: int = 300, overlap: int = 80) -> list[str]:
+    paragraphs = re.split(r'\n\s*\n', text.strip())  # Tách đoạn theo 2 xuống dòng
+    chunks = []
+
+    for para in paragraphs:
+        words = para.strip().split()
+        if not words:
+            continue
+
+        # Chia đoạn dài thành các chunk nhỏ
+        i = 0
+        while i < len(words):
+            chunk_words = words[i:i + max_words]
+            chunks.append(" ".join(chunk_words))
+            if i + max_words >= len(words):
+                break
+            i += max_words - overlap  # tạo overlap
+
+    return chunks
+
+def store_chunks(chunks, metadata=None, original_text: str = None):
     embeddings = embed_chunks(chunks)
     file_id = metadata.get("file_id", uuid.uuid4().hex)
     file_name = metadata.get("filename", "unknown.docx")
@@ -87,7 +107,26 @@ def store_chunks(chunks, metadata=None):
     uploaded_at = datetime.now(timezone.utc).isoformat()
     source = metadata.get("source", "file")
 
-    points = [
+    points = []
+
+    # Thêm original text (dùng dummy vector)
+    if original_text:
+        points.append(PointStruct(
+            id=uuid.uuid4().hex,
+            vector=[0.0] * EMBED_DIM,
+            payload={
+                "file_id": file_id,
+                "filename": file_name,
+                "tags": tags,
+                "uploaded_at": uploaded_at,
+                "source": source,
+                "text": original_text,
+                "is_original": True,
+            }
+        ))
+
+    # Các chunk vector hóa
+    points.extend([
         PointStruct(
             id=uuid.uuid4().hex,
             vector=vec,
@@ -102,7 +141,8 @@ def store_chunks(chunks, metadata=None):
             }
         )
         for vec, chunk in zip(embeddings, chunks)
-    ]
+    ])
+
     qdrant.upload_points(collection_name=COLLECTION_NAME, points=points)
     
     
@@ -122,7 +162,7 @@ def store_chunks(chunks, metadata=None):
 #     ]
 #     qdrant.upload_points(collection_name=COLLECTION_NAME, points=points)
 
-def search_context(query, filter_tag=None, top_k=10, score_threshold=0.55):
+def search_context(query, filter_tag=None, top_k=15, score_threshold=0.40):
     query_vec = model.encode([["Represent the question:", query]])[0]
 
     filter_query = {"must": [{"key": "tags", "match": {"value": filter_tag}}]} if filter_tag else None
@@ -135,7 +175,7 @@ def search_context(query, filter_tag=None, top_k=10, score_threshold=0.55):
     )
 
     # Nếu kết quả theo tag ít quá thì fallback (không tag)
-    if filter_tag and len(hits) < 3:
+    if filter_tag and len(hits) < 1:
         hits = qdrant.search(
             collection_name=COLLECTION_NAME,
             query_vector=query_vec,
@@ -175,15 +215,20 @@ def import_collection_from_raw(raw):
     try:
         points = []
         for p in raw:
-            # đảm bảo id là string UUID
-            if not isinstance(p.get("id"), str):
-                p["id"] = uuid.uuid4().hex
-            points.append(PointStruct(**p))
+            point_id = str(p.get("id") or uuid.uuid4().hex)
+            vector = p.get("vector")
+            payload = p.get("payload", {})
+
+            if vector is None:
+                continue  # skip nếu thiếu vector
+
+            points.append(PointStruct(id=point_id, vector=vector, payload=payload))
 
         qdrant.upload_points(collection_name=COLLECTION_NAME, points=points)
         return {"message": f"✅ Đã import thành công {len(points)} điểm vào collection."}
     except Exception as e:
         return {"error": str(e)}
+
 
 def list_uploaded_files():
     points, _ = qdrant.scroll(
@@ -241,7 +286,7 @@ def update_file(file: UploadFile, file_id: str, tags: List[str] = []):
         contents = file.file.read()
         doc = Document(BytesIO(contents))
         text = "\n".join(p.text for p in doc.paragraphs)
-        chunks = chunk_by_sentences(text)
+        chunks = smart_chunk_text(text)
 
         store_chunks(chunks, metadata={
             "file_id": file_id,
@@ -249,22 +294,24 @@ def update_file(file: UploadFile, file_id: str, tags: List[str] = []):
             "tags": tags,
             "source": "file",
             "uploaded_at": datetime.now(timezone.utc).isoformat()
-        })
+        }, original_text=text)
 
         return {"message": f"File '{file.filename}' updated successfully"}
     except Exception as e:
         raise RuntimeError(f"Lỗi update file: {str(e)}")
+
 def update_text_by_file_id(file_id: str, new_text: str, tags: List[str] = []):
     try:
         delete_file_by_id(file_id)
-        chunks = chunk_by_sentences(new_text)
+        chunks = smart_chunk_text(new_text)
         store_chunks(chunks, metadata={
             "file_id": file_id,
             "filename": f"text-{file_id}",
             "tags": tags,
             "source": "text",
             "uploaded_at": datetime.now(timezone.utc).isoformat()
-        })
+        }, original_text=new_text)
+
         return {"message": f"Text {file_id} updated successfully"}
     except Exception as e:
         raise RuntimeError(f"Lỗi update text: {str(e)}")
@@ -281,8 +328,16 @@ def get_text_by_file_id(file_id: str) -> str:
         with_vectors=False,
         limit=10000
     )
-    sorted_chunks = sorted(points, key=lambda p: p.id)  # Giữ thứ tự
+
+    # Ưu tiên trả bản gốc nếu có
+    for p in points:
+        if p.payload.get("is_original"):
+            return p.payload.get("text", "")
+
+    # Nếu không có bản gốc, trả các chunk nối lại
+    sorted_chunks = sorted(points, key=lambda p: p.id)
     return "\n".join(p.payload.get("text", "") for p in sorted_chunks)
+
 
 
 

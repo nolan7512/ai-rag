@@ -24,6 +24,7 @@ function normalizeMarkdown(text = "") {
         .replaceAll(/\\'/g, "'")     // \' => '
         .replaceAll(/\\n/g, "\n")    // \n => newline
         .replaceAll(/\\t/g, "\t")    // \t => tab
+        // .replaceAll(/\\s/g, "\s")    // \s => space
         .replaceAll(/\\\\/g, "\\")   // \\ => \
         .replaceAll(/\\u003c/g, "<") // \u003c => <
         .replaceAll(/\\u003e/g, ">") // \u003e => >
@@ -158,6 +159,35 @@ export default function ChatPage() {
 
     setIsTyping(false);
   };
+  // helper copy with fallback
+  function copyToClipboard(text) {
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(text).catch(() => {
+        // fallback nếu bị lỗi
+        fallbackCopy(text);
+      });
+    } else {
+      fallbackCopy(text);
+    }
+
+    function fallbackCopy(str) {
+      const ta = document.createElement("textarea");
+      ta.value = str;
+      // tránh hiển thị
+      ta.style.position = "fixed";
+      ta.style.top = "-1000px";
+      ta.style.left = "-1000px";
+      document.body.appendChild(ta);
+      ta.focus();
+      ta.select();
+      try {
+        document.execCommand("copy");
+      } catch (e) {
+        console.warn("Fallback copy failed", e);
+      }
+      document.body.removeChild(ta);
+    }
+  }
 
   return (
     <div className="flex flex-col h-[80vh] md:h-lvh bg-gray-50">
@@ -224,7 +254,8 @@ export default function ChatPage() {
                                   </code>
                                 </pre>
                                 <button
-                                  onClick={() => navigator.clipboard.writeText(content)}
+                                  onClick={() => copyToClipboard(content)}
+                                  aria-label="Copy code"
                                   className="absolute top-1 right-2 text-xs text-gray-500 bg-white px-2 py-1 border rounded opacity-0 group-hover:opacity-100"
                                 >
                                   📋 Copy
