@@ -1,149 +1,291 @@
-import React, { useState } from "react";
-import "@chatscope/chat-ui-kit-styles/dist/default/styles.min.css";
+import React, { useState, useRef, useEffect } from "react";
+import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
+import rehypeHighlight from "rehype-highlight";
+import "highlight.js/styles/github.css";
+import he from "he";
 import {
-    MainContainer,
-    ChatContainer,
-    MessageList,
-    MessageInput,
-    Message,
-    TypingIndicator,
-    MessageSeparator,
-    Avatar,
+  MainContainer,
+  ChatContainer,
+  MessageList,
+  MessageInput,
+  Message,
+  TypingIndicator,
+  MessageSeparator,
+  Avatar,
 } from "@chatscope/chat-ui-kit-react";
+const VITE_SERVER_API = import.meta.env.VITE_SERVER_API || "http://localhost:8000";
+
+function normalizeMarkdown(text = "") {
+  try {
+    return he.decode(
+      text
+        .replaceAll(/\\"/g, '"')     // \" => "
+        .replaceAll(/\\'/g, "'")     // \' => '
+        .replaceAll(/\\n/g, "\n")    // \n => newline
+        .replaceAll(/\\t/g, "\t")    // \t => tab
+        // .replaceAll(/\\s/g, "\s")    // \s => space
+        .replaceAll(/\\\\/g, "\\")   // \\ => \
+        .replaceAll(/\\u003c/g, "<") // \u003c => <
+        .replaceAll(/\\u003e/g, ">") // \u003e => >
+        .replaceAll(/\\u0026/g, "&") // \u0026 => &
+    );
+  } catch {
+    return text;
+  }
+}
+
+
+function extractTextFromReactNode(node) {
+  if (typeof node === "string" || typeof node === "number") {
+    return String(node);
+  }
+
+  if (Array.isArray(node)) {
+    return node.map(extractTextFromReactNode).join("");
+  }
+
+  if (React.isValidElement(node)) {
+    return extractTextFromReactNode(node.props.children);
+  }
+
+  return "";
+}
 
 export default function ChatPage() {
-    const [messages, setMessages] = useState([]);
-    const [isTyping, setIsTyping] = useState(false);
-    function stripHtml(html) {
-        const temp = document.createElement("div");
-        temp.innerHTML = html;
-        return temp.textContent || temp.innerText || "";
+  const [messages, setMessages] = useState([]);
+  const [isTyping, setIsTyping] = useState(false);
+  const abortControllerRef = useRef(null);
+  const messageListRef = useRef(null);
+  const [useStream, setUseStream] = useState(true);
+  useEffect(() => {
+    if (messageListRef.current) {
+      messageListRef.current.scrollTop = messageListRef.current.scrollHeight;
     }
-    const handleSend = async (text) => {
-        if (!text.trim()) return;
+  }, [messages]);
 
-        const cleanedQuestion = stripHtml(text.trim());
+  const stripHtml = (html) => {
+    const temp = document.createElement("div");
+    temp.innerHTML = html;
+    return temp.textContent || temp.innerText || "";
+  };
 
-        setMessages((prev) => [
-            ...prev,
-            {
-                type: "text",
-                message: cleanedQuestion,
-                sender: "user",
-                direction: "outgoing",
-            },
-        ]);
+  const handleSend = async (text) => {
+    if (!text.trim()) return;
+    const cleaned = stripHtml(text.trim());
 
-        setIsTyping(true);
+    setMessages((prev) => [
+      ...prev,
+      { sender: "user", direction: "outgoing", message: cleaned },
+    ]);
+    setIsTyping(true);
 
-        const newBotMessage = {
-            type: "text",
-            message: "",
-            sender: "bot",
-            direction: "incoming",
-        };
+    const newBotMsg = {
+      sender: "bot",
+      direction: "incoming",
+      message: "",
+      isStreaming: useStream,
+    };
+    const msgIndex = messages.length + 1;
+    setMessages((prev) => [...prev, newBotMsg]);
 
-        setMessages((prev) => [...prev, newBotMessage]);
-        const messageIndex = messages.length + 1;
+    try {
+      const form = new FormData();
+      form.append("question", cleaned);
+      const memory = messages
+        .map((m) => `${m.sender === "user" ? "Người dùng" : "Bot"}: ${m.message}`)
+        .join("\n");
+      form.append("history", memory);
+      form.append("stream", useStream.toString());
 
-        try {
-            const form = new FormData();
-            form.append("question", cleanedQuestion);
+      abortControllerRef.current = new AbortController();
+      const res = await fetch(`${VITE_SERVER_API}/ask`, {
+        method: "POST",
+        body: form,
+        signal: abortControllerRef.current.signal,
+      });
 
-            const res = await fetch("http://localhost:8000/ask", {
-                method: "POST",
-                body: form,
-            });
+      if (useStream) {
+        // Stream mode
+        const reader = res.body.getReader();
+        const decoder = new TextDecoder("utf-8");
+        let buffer = "";
 
-            if (!res.body) throw new Error("Không có phản hồi từ server");
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
 
-            const reader = res.body.getReader();
-            const decoder = new TextDecoder("utf-8");
-            let result = "";
+          buffer += decoder.decode(value, { stream: true });
 
-            while (true) {
-                const { done, value } = await reader.read();
-                if (done) break;
-
-                const chunk = decoder.decode(value, { stream: true });
-                result += chunk;
-
-                // Cập nhật tin nhắn bot khi đang stream
-                setMessages((prev) => {
-                    const updated = [...prev];
-                    updated[messageIndex] = {
-                        ...updated[messageIndex],
-                        message: result,
-                    };
-                    return updated;
-                });
-            }
-        } catch (err) {
-            console.error("Lỗi gọi API:", err);
-            setMessages((prev) => [
-                ...prev,
-                {
-                    type: "text",
-                    message: "⚠️ Lỗi khi gọi backend.",
-                    sender: "bot",
-                    direction: "incoming",
-                },
-            ]);
+          setMessages((prev) => {
+            const updated = [...prev];
+            if (!updated[msgIndex]) return updated;
+            updated[msgIndex].message = buffer;
+            return updated;
+          });
         }
 
-        setIsTyping(false);
-    };
+        setMessages((prev) => {
+          const updated = [...prev];
+          if (!updated[msgIndex]) return updated;
+          updated[msgIndex].isStreaming = false;
+          return updated;
+        });
 
-    return (
-        <div
-            style={{
-                height: "100vh",
-                backgroundColor: "#f7f8fa",
-                display: "flex",
-                flexDirection: "column",
-            }}
-        >
-            <div
-                className="chat-header"
-                style={{
-                    padding: "8px 16px",
-                    borderBottom: "1px solid #ddd",
-                    background: "#fff",
-                }}
+      } else {
+        // Non-stream mode: receive full response
+        const result = await res.json();
+        setMessages((prev) => {
+          const updated = [...prev];
+          if (!updated[msgIndex]) return updated;
+          updated[msgIndex].message = result.answer || "Không có câu trả lời.";
+          updated[msgIndex].isStreaming = false;
+          return updated;
+        });
+      }
+
+    } catch (err) {
+      console.error("Stream error:", err);
+      setMessages((prev) => [
+        ...prev,
+        {
+          sender: "bot",
+          direction: "incoming",
+          message: "⚠️ Đã xảy ra lỗi khi gọi backend.",
+          isStreaming: false,
+        },
+      ]);
+      setIsTyping(false);
+    }
+    finally {
+          setIsTyping(false);
+    }
+  };
+  // helper copy with fallback
+  function copyToClipboard(text) {
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(text).catch(() => {
+        // fallback nếu bị lỗi
+        fallbackCopy(text);
+      });
+    } else {
+      fallbackCopy(text);
+    }
+
+    function fallbackCopy(str) {
+      const ta = document.createElement("textarea");
+      ta.value = str;
+      // tránh hiển thị
+      ta.style.position = "fixed";
+      ta.style.top = "-1000px";
+      ta.style.left = "-1000px";
+      document.body.appendChild(ta);
+      ta.focus();
+      ta.select();
+      try {
+        document.execCommand("copy");
+      } catch (e) {
+        console.warn("Fallback copy failed", e);
+      }
+      document.body.removeChild(ta);
+    }
+  }
+
+  return (
+    <div className="flex flex-col h-[80vh] md:h-lvh bg-gray-50">
+      <header className="p-4 border-b bg-white shadow">
+        <h1 className="text-lg font-semibold text-gray-800">💬 Trợ lý doanh nghiệp</h1>
+      </header>
+
+      <div className="flex-1 flex flex-col overflow-hidden">
+        <MainContainer>
+          <ChatContainer>
+            <MessageList
+              typingIndicator={isTyping ? <TypingIndicator className="ml-2" content="Đang xử lý..." /> : null}
+              ref={messageListRef}
+              className="overflow-y-auto"
             >
-                <h3>💬 AI</h3>
-            </div>
+              <MessageSeparator content="Hôm nay" />
+              {messages.filter((m) => m.message.trim() !== "").map((m, i) => (
+                <Message
+                  key={i}
+                  model={{ sender: m.sender, direction: m.direction }}
+                >
+                  <Message.CustomContent>
+                    {m.isStreaming ? (
+                      <pre className="rounded-md bg-gray-100 p-2 whitespace-pre-wrap break-words">
+                        {/* {normalizeMarkdown(m.message)} */}
+                        {m.message}
+                      </pre>
+                    ) : (
+                      <ReactMarkdown
+                        children={normalizeMarkdown(m.message)}
+                        remarkPlugins={[remarkGfm]}
+                        rehypePlugins={[rehypeHighlight]}
+                        components={{
+                          table({ children }) {
+                            return (
+                              <div className="overflow-x-auto">
+                                <table className="table-auto border-collapse border border-gray-300 w-full">
+                                  {children}
+                                </table>
+                              </div>
+                            );
+                          },
+                          th({ children }) {
+                            return (
+                              <th className="border border-gray-300 px-2 py-1 bg-gray-100 text-left">
+                                {children}
+                              </th>
+                            );
+                          },
+                          td({ children }) {
+                            return (
+                              <td className="border border-gray-300 px-2 py-1 whitespace-pre-wrap">
+                                {children}
+                              </td>
+                            );
+                          },
+                          code({ node, inline, className, children, ...props }) {
+                            const content = extractTextFromReactNode(children);
+                            return (
+                              <div className="relative group">
+                                <pre className="rounded-md bg-gray-100 p-2 whitespace-pre-wrap break-words">
+                                  <code className={className} {...props}>
+                                    {children}
+                                  </code>
+                                </pre>
+                                <button
+                                  onClick={() => copyToClipboard(content)}
+                                  aria-label="Copy code"
+                                  className="absolute top-1 right-2 text-xs text-gray-500 bg-white px-2 py-1 border rounded opacity-0 group-hover:opacity-100"
+                                >
+                                  📋 Copy
+                                </button>
+                              </div>
+                            );
+                          },
+                        }}
 
-            <MainContainer style={{ flex: 1 }}>
-                <ChatContainer>
-                    <MessageList
-                        typingIndicator={
-                            isTyping ? <TypingIndicator content="Đang xử lý..." /> : null
-                        }
-                    >
-                        <MessageSeparator content="Hôm nay" />
-                        {messages.map((m, i) => (
-                            <Message
-                                key={i}
-                                model={{
-                                    message: m.message,
-                                    sender: m.sender,
-                                    direction: m.direction,
-                                }}
-                            >
-                                {m.sender === "bot" && <Avatar name="Bot" src="/bot.jpg" />}
-                                {m.sender === "user" && <Avatar name="User" src="/user.jpg" />}
-                            </Message>
-                        ))}
-                    </MessageList>
+                      />
+                    )}
+                  </Message.CustomContent>
+                  <Avatar
+                    name={m.sender === "user" ? "User" : "Bot"}
+                    src={`/${m.sender}.jpg`}
+                  />
+                </Message>
+              ))}
+            </MessageList>
+            <MessageInput
+              placeholder="Nhập câu hỏi..."
+              onSend={handleSend}
+              attachButton={true}
+            />
+          </ChatContainer>
+        </MainContainer>
 
-                    <MessageInput
-                        placeholder="Nhập câu hỏi..."
-                        onSend={handleSend}
-                        attachButton={false}
-                    />
-                </ChatContainer>
-            </MainContainer>
-        </div>
-    );
+      </div>
+    </div>
+  );
 }
