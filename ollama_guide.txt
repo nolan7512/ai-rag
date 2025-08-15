@@ -1,0 +1,5 @@
+ollama pull hf.co/NousResearch/Nous-Hermes-2-Mistral-7B-DPO-GGUF:Q4_K_M
+ollama create ani -f Ani.Modelfile
+ollama rm
+ollama run
+ 

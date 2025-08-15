@@ -71,7 +71,7 @@ Chỉ trả lời duy nhất một từ:
         response = requests.post(
             LLM_API_URL,
             json={"model": LLM_MODEL_NAME, "prompt": prompt, "stream": False},
-            timeout=300.0,
+            timeout=1200.0,
         )
         answer = response.json().get("response", "").strip().lower()
         return "yes" in answer

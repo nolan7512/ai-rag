@@ -155,9 +155,11 @@ export default function ChatPage() {
           isStreaming: false,
         },
       ]);
+      setIsTyping(false);
     }
-
-    setIsTyping(false);
+    finally {
+          setIsTyping(false);
+    }
   };
   // helper copy with fallback
   function copyToClipboard(text) {
